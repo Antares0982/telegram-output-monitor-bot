@@ -20,9 +20,14 @@ else:
     updater = Updater(token=token, use_context=True)
 
 with open(filename, 'r', encoding="utf-8") as f:
-    txt = f.read()
+    txt: str = f.read()
 
 if txt != "":
-    updater.bot.send_message(chat_id=myid, text=txt)
+    ind = txt.find("\n")
+    while ind != -1:
+        try:
+            updater.bot.send_message(chat_id=myid, text=txt[:ind])
+        txt = txt[ind+1:]
+        ind = txt.find("\n")
     with open(filename, 'w', encoding='utf-8') as f:
         f.write("")
