@@ -1,8 +1,13 @@
 from telegram.ext import Updater
 from configparser import ConfigParser
 
+from os import getcwd
 cfgparser = ConfigParser()
-cfgparser.read("cfg.ini")
+thispath = getcwd()
+if thispath.find("/"):
+    cfgparser.read(getcwd()+"/cfg.ini")
+else:
+    cfgparser.read(getcwd()+"\\cfg.ini")
 
 use_proxy = cfgparser.getboolean("PROXY", "USE_PROXY")
 
