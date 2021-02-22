@@ -27,6 +27,8 @@ if txt != "":
     while ind != -1:
         try:
             updater.bot.send_message(chat_id=myid, text=txt[:ind])
+        except:
+            pass
         txt = txt[ind+1:]
         ind = txt.find("\n")
     with open(filename, 'w', encoding='utf-8') as f:
