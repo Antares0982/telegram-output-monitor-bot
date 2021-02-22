@@ -4,11 +4,11 @@ from configparser import ConfigParser
 import sys
 cfgparser = ConfigParser()
 thispath = sys.path[0]
-if thispath.find("/"):
+if thispath.find("/") != -1:
     cfgparser.read(thispath+"/cfg.ini")
 else:
     cfgparser.read(thispath+"\\cfg.ini")
-
+print(thispath)
 use_proxy = cfgparser.getboolean("PROXY", "USE_PROXY")
 
 filename = cfgparser.get("PATH", "FILEPATH")
@@ -36,5 +36,6 @@ if txt != "":
             pass
         txt = txt[ind+1:]
         ind = txt.find("\n")
+    updater.bot.send_message(chat_id=myid, text=txt)
     with open(filename, 'w', encoding='utf-8') as f:
         f.write("")
