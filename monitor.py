@@ -1,25 +1,25 @@
-from telegram.ext import Updater
+import json
+import sys
 from configparser import ConfigParser
 from typing import List
-import sys
-import json
+
+from telegram.ext import Updater
 
 cfgparser = ConfigParser()
+
 thispath = sys.path[0]
 if thispath.find("/") != -1:
     cfgparser.read(thispath+"/cfg.ini")
 else:
     cfgparser.read(thispath+"\\cfg.ini")
-print(thispath)
-use_proxy = cfgparser.getboolean("PROXY", "USE_PROXY")
 
 filename = cfgparser.get("PATH", "FILEPATH")
 keywordfile = cfgparser.get("PATH", "KEYWORDPATH")
 
 token = cfgparser.get("BOT", "TOKEN")
-
 myid = cfgparser.getint("BOT", "MYID")
 
+use_proxy = cfgparser.getboolean("PROXY", "USE_PROXY")
 if use_proxy:
     proxy_url = cfgparser.get("PROXY", "PROXY_URL")
     updater = Updater(token=token, request_kwargs={
