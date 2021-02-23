@@ -50,6 +50,7 @@ if txt != "":
                 pass
         txt = txt[ind+1:]
         ind = txt.find("\n")
-    updater.bot.send_message(chat_id=myid, text=txt)
+    if txt != "":
+        updater.bot.send_message(chat_id=myid, text=txt)
     with open(filename, 'w', encoding='utf-8') as f:
         f.write("")
