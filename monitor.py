@@ -1,7 +1,9 @@
 from telegram.ext import Updater
 from configparser import ConfigParser
-
+from typing import List
 import sys
+import json
+
 cfgparser = ConfigParser()
 thispath = sys.path[0]
 if thispath.find("/") != -1:
@@ -12,6 +14,7 @@ print(thispath)
 use_proxy = cfgparser.getboolean("PROXY", "USE_PROXY")
 
 filename = cfgparser.get("PATH", "FILEPATH")
+keywordfile = cfgparser.get("PATH", "KEYWORDPATH")
 
 token = cfgparser.get("BOT", "TOKEN")
 
@@ -26,14 +29,25 @@ else:
 
 with open(filename, 'r', encoding="utf-8") as f:
     txt: str = f.read()
+with open(keywordfile, 'r', encoding="utf-8") as f:
+    KEYWORDS: List[str] = json.load(f)
+
+
+def haskeyword(s: str, keywords: List[str]) -> bool:
+    for keyword in keywords:
+        if s.find(keyword) != -1:
+            return True
+    return False
+
 
 if txt != "":
     ind = txt.find("\n")
     while ind != -1:
-        try:
-            updater.bot.send_message(chat_id=myid, text=txt[:ind])
-        except:
-            pass
+        if not haskeyword(txt[:ind], KEYWORDS):
+            try:
+                updater.bot.send_message(chat_id=myid, text=txt[:ind])
+            except:
+                pass
         txt = txt[ind+1:]
         ind = txt.find("\n")
     updater.bot.send_message(chat_id=myid, text=txt)
