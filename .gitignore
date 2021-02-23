@@ -1,5 +1,6 @@
 cfg.ini
 nohup.out
+keyword.json
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
