@@ -5,6 +5,14 @@ from typing import List
 
 from telegram.ext import Updater
 
+
+def haskeyword(s: str, keywords: List[str]) -> bool:
+    for keyword in keywords:
+        if s.find(keyword) != -1:
+            return True
+    return False
+
+
 cfgparser = ConfigParser()
 
 thispath = sys.path[0]
@@ -33,24 +41,24 @@ with open(keywordfile, 'r', encoding="utf-8") as f:
     KEYWORDS: List[str] = json.load(f)
 
 
-def haskeyword(s: str, keywords: List[str]) -> bool:
-    for keyword in keywords:
-        if s.find(keyword) != -1:
-            return True
-    return False
+if txt == "":
+    exit(1)
 
+with open(filename, 'w', encoding='utf-8') as f:
+    f.write("")
 
-if txt != "":
+ind = txt.find("\n")
+
+while ind != -1:
+    if not haskeyword(txt[:ind], KEYWORDS):
+        try:
+            updater.bot.send_message(chat_id=myid, text=txt[:ind])
+        except:
+            pass
+    txt = txt[ind+1:]
     ind = txt.find("\n")
-    while ind != -1:
-        if not haskeyword(txt[:ind], KEYWORDS):
-            try:
-                updater.bot.send_message(chat_id=myid, text=txt[:ind])
-            except:
-                pass
-        txt = txt[ind+1:]
-        ind = txt.find("\n")
-    if txt != "":
-        updater.bot.send_message(chat_id=myid, text=txt)
-    with open(filename, 'w', encoding='utf-8') as f:
-        f.write("")
+if txt != "":
+    try:
+        updater.bot.send_message(chat_id=myid, text=txt[:ind])
+    except:
+        pass
