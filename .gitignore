@@ -1,6 +1,6 @@
-cfg.ini
-nohup.out
-keyword.json
+cfg.py
+rabbitmq_interface.py
+.vscode/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

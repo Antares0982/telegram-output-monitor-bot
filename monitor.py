@@ -1,64 +1,58 @@
-import json
+import os
+import subprocess
 import sys
-from configparser import ConfigParser
-from typing import List
 
-from telegram.ext import Updater
+from telegram import Bot
 
 
-def haskeyword(s: str, keywords: List[str]) -> bool:
-    for keyword in keywords:
-        if s.find(keyword) != -1:
-            return True
-    return False
+def setup():
+    _cwd = os.path.dirname(os.path.realpath(__file__))
+    _PIP = "pip3" if sys.platform != "win32" else "pip"
+    subprocess.run([_PIP, "install", "-r", "requirements.txt"])
+    subprocess.run(["./setup.sh"], shell=True, cwd=_cwd)
 
 
-cfgparser = ConfigParser()
+setup()
 
-thispath = sys.path[0]
-if thispath.find("/") != -1:
-    cfgparser.read(thispath+"/cfg.ini")
-else:
-    cfgparser.read(thispath+"\\cfg.ini")
+import asyncio
+import time
 
-filename = cfgparser.get("PATH", "FILEPATH")
-keywordfile = cfgparser.get("PATH", "KEYWORDPATH")
+from cfg import MYID, TOKEN
+from rabbitmq_interface import NoLogInterface, listen_to
 
-token = cfgparser.get("BOT", "TOKEN")
-myid = cfgparser.getint("BOT", "MYID")
-
-use_proxy = cfgparser.getboolean("PROXY", "USE_PROXY")
-if use_proxy:
-    proxy_url = cfgparser.get("PROXY", "PROXY_URL")
-    updater = Updater(token=token, request_kwargs={
-                      'proxy_url': proxy_url}, use_context=True)
-else:
-    updater = Updater(token=token, use_context=True)
-
-with open(filename, 'r', encoding="utf-8") as f:
-    txt: str = f.read()
-with open(keywordfile, 'r', encoding="utf-8") as f:
-    KEYWORDS: List[str] = json.load(f)
+bot = Bot(token=TOKEN)
 
 
-if txt == "":
-    exit(1)
+def send_log(key: str, message: bytes):
+    log_text = f"[{key}]: {message.decode()}"
+    asyncio.create_task(bot.send_message(chat_id=MYID, text=log_text))
 
-with open(filename, 'w', encoding='utf-8') as f:
-    f.write("")
 
-ind = txt.find("\n")
-
-while ind != -1:
-    if not haskeyword(txt[:ind], KEYWORDS):
-        try:
-            updater.bot.send_message(chat_id=myid, text=txt[:ind])
-        except:
-            pass
-    txt = txt[ind+1:]
-    ind = txt.find("\n")
-if txt != "":
+def cb(routing_key: str, message, deliver, properties):
     try:
-        updater.bot.send_message(chat_id=myid, text=txt[:ind])
-    except:
-        pass
+        key = routing_key.partition(".")[2]
+        send_log(key, message)
+    except Exception as e:
+        print(e)
+
+
+consumer = listen_to(
+    "logging",
+    {"monitor": "logging.#"},
+    cb,
+    NoLogInterface()
+)
+
+import signal
+
+
+def _exit_func(*args):
+    consumer.stop()
+    sys.exit(0)
+
+
+signal.signal(signal.SIGINT, _exit_func)
+
+while True:
+    # suspend the main thread
+    time.sleep(10000)
