@@ -52,11 +52,15 @@ import signal
 
 def _exit_func(*args):
     consumer.stop()
+    print("exiting...")
     sys.exit(0)
 
 
 signal.signal(signal.SIGINT, _exit_func)
 
+loop = asyncio.new_event_loop() 
+loop.run_until_complete(bot.send_message(MYID, "[monitor] started"))
+
 while True:
     # suspend the main thread
-    time.sleep(10000)
+    time.sleep(5)
