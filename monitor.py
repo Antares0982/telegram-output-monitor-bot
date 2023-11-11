@@ -19,14 +19,23 @@ import asyncio
 import time
 
 from cfg import MYID, TOKEN
-from rabbitmq_interface import NoLogInterface, listen_to
+from rabbitmq_interface import NoLogInterface, listen_to, send_message
 from text_splitter import longtext_split
 
 bot = Bot(token=TOKEN)
 
 
+def format_message(key: str, message: str):
+    cur_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+    message = message.strip()
+    if '\n' in message:
+        return f"[{cur_time}][{key}]\n{message}"
+    return f"[{cur_time}][{key}]: {message}"
+
+
 def send_log(key: str, message: bytes):
-    log_text = f"[{key}]: {message.decode()}"
+    # log_text = f"[{key}]: {message.decode()}"
+    log_text = format_message(key, message.decode())
     texts = longtext_split(log_text)
     for text in texts:
         asyncio.create_task(bot.send_message(MYID, text))
@@ -58,9 +67,10 @@ def _exit_func(*args):
 
 signal.signal(signal.SIGINT, _exit_func)
 
-loop = asyncio.new_event_loop() 
+loop = asyncio.new_event_loop()
 loop.run_until_complete(bot.send_message(MYID, "[monitor] started"))
 
 while True:
     # suspend the main thread
-    time.sleep(5)
+    time.sleep(3600)
+    send_message("logging.monitor", "monitor is alive")
