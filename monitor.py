@@ -1,3 +1,4 @@
+#!/usr/bin/env -S python3 -O
 import os
 import subprocess
 import sys
@@ -25,6 +26,18 @@ from text_splitter import longtext_split
 bot = Bot(token=TOKEN)
 
 
+async def bot_send_message(text):
+    for i in range(5):
+        try:
+            await bot.send_message(MYID, text)
+            break
+        except Exception as e:
+            if i == 4:
+                raise type(e) from e
+            print(e)
+            await asyncio.sleep(2)
+
+
 def format_message(key: str, message: str):
     cur_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
     message = message.strip()
@@ -38,7 +51,7 @@ def send_log(key: str, message: bytes):
     log_text = format_message(key, message.decode())
     texts = longtext_split(log_text)
     for text in texts:
-        asyncio.create_task(bot.send_message(MYID, text))
+        asyncio.create_task(bot_send_message(text))
 
 
 def cb(routing_key: str, message: bytes, deliver, properties):
@@ -68,7 +81,7 @@ def _exit_func(*args):
 signal.signal(signal.SIGINT, _exit_func)
 
 loop = asyncio.new_event_loop()
-loop.run_until_complete(bot.send_message(MYID, "[monitor] started"))
+loop.run_until_complete(bot_send_message("[monitor] started"))
 
 while True:
     # suspend the main thread
