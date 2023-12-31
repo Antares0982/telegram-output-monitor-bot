@@ -41,9 +41,7 @@ async def bot_send_message(text):
 def format_message(key: str, message: str):
     cur_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
     message = message.strip()
-    if '\n' in message:
-        return f"[{cur_time}][{key}]\n{message}"
-    return f"[{cur_time}][{key}]: {message}"
+    return f"[{cur_time}][{key}]\n{message}"
 
 
 def send_log(key: str, message: bytes):
