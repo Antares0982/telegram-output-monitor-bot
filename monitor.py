@@ -2,8 +2,7 @@
 import os
 import subprocess
 import sys
-
-from telegram import Bot
+from typing import TYPE_CHECKING
 
 
 def setup():
@@ -19,11 +18,24 @@ setup()
 import asyncio
 import time
 
+from telegram import Bot
+
 from cfg import MYID, TOKEN
-from rabbitmq_interface import NoLogInterface, listen_to, send_message
+from rabbitmq_interface import listen_to
 from text_splitter import longtext_split
 
+
+if TYPE_CHECKING:
+    from aio_pika.message import AbstractIncomingMessage
+
+
 bot = Bot(token=TOKEN)
+
+
+def format_message(key: str, message: str):
+    cur_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+    message = message.strip()
+    return f"[{cur_time}][{key}]\n{message}"
 
 
 async def bot_send_message(text):
@@ -36,52 +48,43 @@ async def bot_send_message(text):
                 raise type(e) from e
             print(e)
             await asyncio.sleep(2)
+        except BaseException as e:
+            print(e)
 
 
-def format_message(key: str, message: str):
-    cur_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-    message = message.strip()
-    return f"[{cur_time}][{key}]\n{message}"
-
-
-def send_log(key: str, message: bytes):
+async def send_log(key: str, message: bytes):
     # log_text = f"[{key}]: {message.decode()}"
     log_text = format_message(key, message.decode())
     texts = longtext_split(log_text)
+    loop = asyncio.get_event_loop()
     for text in texts:
-        asyncio.create_task(bot_send_message(text))
+        co = bot_send_message(text)
+        loop.create_task(co)
 
 
-def cb(routing_key: str, message: bytes, deliver, properties):
-    try:
-        key = routing_key.partition(".")[2]
-        send_log(key, message)
-    except Exception as e:
-        print(e)
+async def on_message(message: "AbstractIncomingMessage"):
+    key = message.routing_key.partition(".")[2] if message.routing_key is not None else "default"
+    await send_log(key, message.body)
 
-
-consumer = listen_to(
-    "logging",
-    {"monitor": "logging.#"},
-    cb,
-    NoLogInterface()
-)
 
 import signal
 
 
 def _exit_func(*args):
-    consumer.stop()
     print("exiting...")
     sys.exit(0)
 
 
-signal.signal(signal.SIGINT, _exit_func)
+async def scheduled_heartbeat():
+    loop = asyncio.get_event_loop()
+    while True:
+        await asyncio.sleep(3600)
+        loop.create_task(send_log("monitor", "monitor is alive"))
 
-loop = asyncio.new_event_loop()
-loop.run_until_complete(bot_send_message("[monitor] started"))
 
-while True:
-    # suspend the main thread
-    time.sleep(3600)
-    send_message("logging.monitor", "monitor is alive")
+if __name__ == "__main__":
+    signal.signal(signal.SIGINT, _exit_func)
+    loop = asyncio.get_event_loop()
+    canceller = listen_to(loop, "logging", on_message)
+    loop.create_task(bot_send_message("[monitor] started"))
+    loop.run_until_complete(scheduled_heartbeat())

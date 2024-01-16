@@ -1,2 +1,2 @@
-pika
+aio-pika
 python-telegram-bot
