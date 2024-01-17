@@ -79,7 +79,7 @@ async def scheduled_heartbeat():
     loop = asyncio.get_event_loop()
     while True:
         await asyncio.sleep(3600)
-        loop.create_task(send_log("monitor", "monitor is alive"))
+        loop.create_task(send_log("monitor", b"monitor is alive"))
 
 
 if __name__ == "__main__":
