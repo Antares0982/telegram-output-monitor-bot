@@ -5,6 +5,9 @@ import sys
 from typing import TYPE_CHECKING
 
 
+nodename = os.uname().nodename
+
+
 def setup():
     _cwd = os.path.dirname(os.path.realpath(__file__))
     _PIP = "pip3" if sys.platform != "win32" else "pip"
@@ -35,7 +38,7 @@ bot = Bot(token=TOKEN)
 def format_message(key: str, message: str):
     cur_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
     message = message.strip()
-    return f"[{cur_time}][{key}]\n{message}"
+    return f"[{nodename}][{cur_time}][{key}]\n{message}"
 
 
 async def bot_send_message(text):
@@ -79,12 +82,12 @@ async def scheduled_heartbeat():
     loop = asyncio.get_event_loop()
     while True:
         await asyncio.sleep(3600)
-        loop.create_task(send_log("monitor", b"monitor is alive"))
+        loop.create_task(bot_send_message(f"[{nodename}] monitor is alive"))
 
 
 if __name__ == "__main__":
     signal.signal(signal.SIGINT, _exit_func)
     loop = asyncio.get_event_loop()
     canceller = listen_to(loop, "logging", on_message)
-    loop.create_task(bot_send_message("[monitor] started"))
+    loop.create_task(bot_send_message(f"[{nodename}] monitor started"))
     loop.run_until_complete(scheduled_heartbeat())
