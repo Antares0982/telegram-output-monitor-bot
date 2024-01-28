@@ -4,11 +4,20 @@ import subprocess
 import sys
 from typing import TYPE_CHECKING
 
+from cfg import MYID, TOKEN
+
+
+try:
+    from cfg import SKIP_SETUP  # type: ignore
+except ImportError:
+    SKIP_SETUP = False
 
 nodename = os.uname().nodename
 
 
 def setup():
+    if SKIP_SETUP:
+        return
     _cwd = os.path.dirname(os.path.realpath(__file__))
     _PIP = "pip3" if sys.platform != "win32" else "pip"
     subprocess.run([_PIP, "install", "-r", "requirements.txt"])
@@ -23,7 +32,6 @@ import time
 
 from telegram import Bot
 
-from cfg import MYID, TOKEN
 from rabbitmq_interface import listen_to
 from text_splitter import longtext_split
 
