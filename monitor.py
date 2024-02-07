@@ -40,9 +40,6 @@ if TYPE_CHECKING:
     from aio_pika.message import AbstractIncomingMessage
 
 
-bot = Bot(token=TOKEN)
-
-
 def format_message(key: str, message: str):
     cur_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
     message = message.strip()
@@ -52,7 +49,7 @@ def format_message(key: str, message: str):
 async def bot_send_message(text):
     for i in range(5):
         try:
-            await bot.send_message(MYID, text)
+            await Bot(token=TOKEN).send_message(MYID, text)
             break
         except Exception as e:
             if i == 4:
