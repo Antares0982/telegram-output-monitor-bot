@@ -1,43 +1,20 @@
 #!/usr/bin/env -S python3 -O
-import os
-import subprocess
-import sys
-from typing import TYPE_CHECKING
-
-from cfg import MYID, TOKEN
-
-
-try:
-    from cfg import SKIP_SETUP  # type: ignore
-except ImportError:
-    SKIP_SETUP = False
-
-nodename = os.uname().nodename
-
-
-def setup():
-    if SKIP_SETUP:
-        return
-    _cwd = os.path.dirname(os.path.realpath(__file__))
-    _PIP = "pip3" if sys.platform != "win32" else "pip"
-    subprocess.run([_PIP, "install", "-r", "requirements.txt"])
-    subprocess.run(["./setup.sh"], shell=True, cwd=_cwd)
-    sys.path.append(_cwd)
-
-
-setup()
-
 import asyncio
+import os
+import sys
 import time
+from typing import TYPE_CHECKING
 
 from telegram import Bot
 
-from rabbitmq_interface import listen_to
+from cfg import MYID, TOKEN
+from pika_interface import listen_to
 from text_splitter import longtext_split
 
 
 if TYPE_CHECKING:
     from aio_pika.message import AbstractIncomingMessage
+nodename = os.uname().nodename
 
 
 def format_message(key: str, message: str):
@@ -113,7 +90,8 @@ def wait_until_network_ready():
 if __name__ == "__main__":
     signal.signal(signal.SIGINT, _exit_func)
     wait_until_network_ready()
-    loop = asyncio.get_event_loop()
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     canceller = listen_to(loop, "logging", on_message)
     loop.create_task(bot_send_message(f"[{nodename}] monitor started"))
     loop.run_until_complete(scheduled_heartbeat())

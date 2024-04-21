@@ -1,6 +1,7 @@
 cfg.py
-rabbitmq_interface.py
+pika_interface.py
 .vscode/
+.extra-symlink-search-path/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
