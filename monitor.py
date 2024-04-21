@@ -90,8 +90,29 @@ async def scheduled_heartbeat():
         loop.create_task(bot_send_message(f"[{nodename}] monitor is alive"))
 
 
+def wait_until_network_ready():
+    print("wait until network ready...")
+    import urllib.request as rq
+    last = time.time()
+
+    while True:
+        try:
+            r = rq.urlopen('https://www.google.com')
+            r.read()
+            if 200 <= r.status < 300:
+                break
+        except Exception as e:
+            print(e, file=sys.stderr)
+
+        now = time.time()
+        if now - last < 3:
+            time.sleep(3)
+        last = now
+
+
 if __name__ == "__main__":
     signal.signal(signal.SIGINT, _exit_func)
+    wait_until_network_ready()
     loop = asyncio.get_event_loop()
     canceller = listen_to(loop, "logging", on_message)
     loop.create_task(bot_send_message(f"[{nodename}] monitor started"))
