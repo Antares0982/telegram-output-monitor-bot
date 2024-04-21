@@ -69,7 +69,8 @@ async def scheduled_heartbeat():
 
 if __name__ == "__main__":
     signal.signal(signal.SIGINT, _exit_func)
-    loop = asyncio.get_event_loop()
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     canceller = listen_to(loop, "logging", on_message)
     loop.create_task(bot_send_message(f"[{nodename}] monitor started"))
     loop.run_until_complete(scheduled_heartbeat())
