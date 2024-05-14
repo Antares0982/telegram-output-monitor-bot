@@ -17,16 +17,21 @@ if TYPE_CHECKING:
 nodename = os.uname().nodename
 
 
+def markdown_escape(text: str) -> str:
+    return text.replace("_", "\\_").replace("*", "\\*").replace("[", "\\[").replace("`", "\\`")
+
+
 def format_message(key: str, message: str):
     cur_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
     message = message.strip()
-    return f"[{nodename}][{cur_time}][{key}]\n{message}"
+    prefix = f"\[{markdown_escape(nodename)}]\[{markdown_escape(cur_time)}]\[{markdown_escape(key)}]"
+    return prefix, message
 
 
 async def bot_send_message(text):
     for i in range(5):
         try:
-            await Bot(token=TOKEN).send_message(MYID, text)
+            await Bot(token=TOKEN).send_message(MYID, text, parse_mode="Markdown")
             break
         except Exception as e:
             if i == 4:
@@ -39,11 +44,15 @@ async def bot_send_message(text):
 
 async def send_log(key: str, message: bytes):
     # log_text = f"[{key}]: {message.decode()}"
-    log_text = format_message(key, message.decode())
+    prefix, log_text = format_message(key, message.decode())
     texts = longtext_split(log_text)
     loop = asyncio.get_event_loop()
-    for text in texts:
-        co = bot_send_message(text)
+
+    for i, text in enumerate(texts):
+        send_text = f"```\n{text}\n```"
+        if i == 0:
+            send_text = prefix + send_text
+        co = bot_send_message(send_text)
         loop.create_task(co)
 
 

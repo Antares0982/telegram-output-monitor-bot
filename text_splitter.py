@@ -18,7 +18,7 @@ def force_longtext_split(txt: List[str]) -> List[str]:
             i += 1
         else:
             if i == 0:
-                # 超长行，被迫分割
+                # long text has to be split
                 super_long_line = txt[0]
                 _end = min(1000, len(super_long_line))
                 part = super_long_line[:_end]
