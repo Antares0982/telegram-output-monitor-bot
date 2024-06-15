@@ -24,7 +24,7 @@ def markdown_escape(text: str) -> str:
 def format_message(key: str, message: str):
     cur_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
     message = message.strip()
-    prefix = f"\[{markdown_escape(nodename)}]\[{markdown_escape(cur_time)}]\[{markdown_escape(key)}]"
+    prefix = f"\\[{markdown_escape(nodename)}]\\[{markdown_escape(cur_time)}]\\[{markdown_escape(key)}]"
     return prefix, message
 
 
@@ -73,7 +73,7 @@ async def scheduled_heartbeat():
     loop = asyncio.get_event_loop()
     while True:
         await asyncio.sleep(3600)
-        loop.create_task(bot_send_message(f"\[{nodename}] monitor is alive"))
+        loop.create_task(bot_send_message(f"\\[{nodename}] monitor is alive"))
 
 
 def wait_until_network_ready():
@@ -102,5 +102,5 @@ if __name__ == "__main__":
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     canceller = listen_to(loop, "logging", on_message)
-    loop.create_task(bot_send_message(f"\[{nodename}] monitor started"))
+    loop.create_task(bot_send_message(f"\\[{nodename}] monitor started"))
     loop.run_until_complete(scheduled_heartbeat())
