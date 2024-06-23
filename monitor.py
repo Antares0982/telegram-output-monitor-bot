@@ -46,19 +46,18 @@ async def send_log(key: str, message: bytes):
     # log_text = f"[{key}]: {message.decode()}"
     prefix, log_text = format_message(key, message.decode())
     texts = longtext_split(log_text)
-    loop = asyncio.get_event_loop()
 
     for i, text in enumerate(texts):
         send_text = f"```\n{text}\n```"
         if i == 0:
             send_text = prefix + send_text
-        co = bot_send_message(send_text)
-        loop.create_task(co)
+        await bot_send_message(send_text)
 
 
 async def on_message(message: "AbstractIncomingMessage"):
     key = message.routing_key.partition(".")[2] if message.routing_key is not None else "default"
-    await send_log(key, message.body)
+    loop = asyncio.get_event_loop()
+    loop.create_task(send_log(key, message.body))
 
 
 import signal
