@@ -6,13 +6,15 @@ This file is copied from RBQ project. DO NOT EDIT.
 from typing import List
 
 
+TEXT_LENGTH_LIMIT = 4096
+
 def force_longtext_split(txt: List[str]) -> List[str]:
     counting = 0
     i = 0
     ans: List[str] = []
     sep_len = 0
     while i < len(txt):
-        if counting + len(txt[i]) < 1024 - sep_len:
+        if counting + len(txt[i]) < TEXT_LENGTH_LIMIT - sep_len:
             counting += len(txt[i])
             sep_len = 1
             i += 1
@@ -37,7 +39,7 @@ def force_longtext_split(txt: List[str]) -> List[str]:
 
 
 def longtext_split(txt: str) -> List[str]:
-    if len(txt) < 1024:
+    if len(txt) < TEXT_LENGTH_LIMIT:
         return [txt]
     txts = txt.split("\n")
     ans: List[str] = []
