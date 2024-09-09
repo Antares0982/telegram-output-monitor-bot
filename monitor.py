@@ -4,7 +4,7 @@ import os
 import sys
 import time
 from typing import TYPE_CHECKING
-
+from aio_pika import connect_robust
 from telegram import Bot
 
 from cfg import MYID, TOKEN
@@ -94,6 +94,22 @@ def wait_until_network_ready():
             time.sleep(3)
         last = now
 
+    loop = asyncio.new_event_loop()
+    while True:
+        try:
+            conn = loop.run_until_complete(connect_robust())
+        except:
+            time.sleep(3)
+        else:
+            try:
+                conn.close()
+            except:
+                pass
+            break
+    try:
+        loop.close()
+    except:
+        pass
 
 if __name__ == "__main__":
     signal.signal(signal.SIGINT, _exit_func)
