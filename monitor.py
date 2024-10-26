@@ -6,7 +6,7 @@ import time
 from typing import TYPE_CHECKING
 from aio_pika import connect_robust
 from telegram import Bot
-
+from telegram import MessageEntity
 from cfg import MYID, TOKEN
 from pika_interface import listen_to
 from text_splitter import longtext_split
@@ -24,14 +24,19 @@ def markdown_escape(text: str) -> str:
 def format_message(key: str, message: str):
     cur_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
     message = message.strip()
-    prefix = f"\\[{markdown_escape(nodename)}]\\[{markdown_escape(cur_time)}]\\[{markdown_escape(key)}]"
-    return prefix, message
+    prefix = f"[{nodename}][{cur_time}][{key}]"
+    first_entities = [
+        MessageEntity(MessageEntity.CODE, 1, len(nodename)),
+        MessageEntity(MessageEntity.CODE, 3 + len(nodename), len(cur_time)),
+        MessageEntity(MessageEntity.CODE, 5 + len(nodename) + len(cur_time), len(key)),
+    ]
+    return prefix, message, first_entities
 
 
-async def bot_send_message(text):
+async def bot_send_message(*args, **kwargs):
     for i in range(5):
         try:
-            await Bot(token=TOKEN).send_message(MYID, text, parse_mode="Markdown")
+            await Bot(token=TOKEN).send_message(*args, **kwargs)
             break
         except Exception as e:
             if i == 4:
@@ -44,14 +49,19 @@ async def bot_send_message(text):
 
 async def send_log(key: str, message: bytes):
     # log_text = f"[{key}]: {message.decode()}"
-    prefix, log_text = format_message(key, message.decode())
+    prefix, log_text, first_entities = format_message(key, message.decode())
     texts = longtext_split(log_text)
 
     for i, text in enumerate(texts):
-        send_text = f"```\n{text}\n```"
+        # send_text = f"```\n{text}\n```"
         if i == 0:
-            send_text = prefix + send_text
-        await bot_send_message(send_text)
+            entity_utf8 = first_entities + [MessageEntity(type=MessageEntity.PRE, offset=len(prefix), length=len(text))]
+            send_text = prefix + text
+        else:
+            entity_utf8 = [MessageEntity(type=MessageEntity.PRE, offset=0, length=len(text))]
+            send_text = text
+        entities = MessageEntity.adjust_message_entities_to_utf_16(send_text, entity_utf8)
+        await bot_send_message(MYID, send_text, entities=entities)
 
 
 async def on_message(message: "AbstractIncomingMessage"):
@@ -72,7 +82,10 @@ async def scheduled_heartbeat():
     loop = asyncio.get_event_loop()
     while True:
         await asyncio.sleep(3600)
-        loop.create_task(bot_send_message(f"\\[{nodename}] monitor is alive"))
+        text = f"[{nodename}] monitor is alive"
+        entities_utf8 = [MessageEntity(type=MessageEntity.CODE, offset=1, length=len(nodename))]
+        entities = MessageEntity.adjust_message_entities_to_utf_16(text, entities_utf8)
+        loop.create_task(bot_send_message(MYID, text, entities=entities))
 
 
 def wait_until_network_ready():
@@ -111,11 +124,15 @@ def wait_until_network_ready():
     except:
         pass
 
+
 if __name__ == "__main__":
     signal.signal(signal.SIGINT, _exit_func)
     wait_until_network_ready()
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     canceller = listen_to(loop, "logging", on_message)
-    loop.create_task(bot_send_message(f"\\[{nodename}] monitor started"))
+    text = f"[{nodename}] monitor started"
+    entities_utf8 = [MessageEntity(type=MessageEntity.CODE, offset=1, length=len(nodename))]
+    entities = MessageEntity.adjust_message_entities_to_utf_16(text, entities_utf8)
+    loop.create_task(bot_send_message(MYID, text, entities=entities))
     loop.run_until_complete(scheduled_heartbeat())
