@@ -48,12 +48,10 @@ async def bot_send_message(*args, **kwargs):
 
 
 async def send_log(key: str, message: bytes):
-    # log_text = f"[{key}]: {message.decode()}"
     prefix, log_text, first_entities = format_message(key, message.decode())
     texts = longtext_split(log_text)
 
     for i, text in enumerate(texts):
-        # send_text = f"```\n{text}\n```"
         if i == 0:
             entity_utf8 = first_entities + [MessageEntity(type=MessageEntity.PRE, offset=len(prefix), length=len(text))]
             send_text = prefix + text

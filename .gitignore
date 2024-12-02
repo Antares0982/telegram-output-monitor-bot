@@ -1,7 +1,7 @@
 cfg.py
 pika_interface.py
 .vscode/
-.extra-symlink-search-path/
+/.nix-pyenv
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
