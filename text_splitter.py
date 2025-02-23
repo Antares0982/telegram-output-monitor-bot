@@ -3,15 +3,13 @@ This file is copied from RBQ project. DO NOT EDIT.
 """
 
 
-from typing import List
+TEXT_LENGTH_LIMIT = 4000
 
 
-TEXT_LENGTH_LIMIT = 4096
-
-def force_longtext_split(txt: List[str]) -> List[str]:
+def force_longtext_split(txt: list[str]) -> list[str]:
     counting = 0
     i = 0
-    ans: List[str] = []
+    ans: list[str] = []
     sep_len = 0
     while i < len(txt):
         if counting + len(txt[i]) < TEXT_LENGTH_LIMIT - sep_len:
@@ -20,7 +18,7 @@ def force_longtext_split(txt: List[str]) -> List[str]:
             i += 1
         else:
             if i == 0:
-                # long text has to be split
+                # too long, must split
                 super_long_line = txt[0]
                 _end = min(1000, len(super_long_line))
                 part = super_long_line[:_end]
@@ -38,11 +36,11 @@ def force_longtext_split(txt: List[str]) -> List[str]:
     return ans
 
 
-def longtext_split(txt: str) -> List[str]:
+def longtext_split(txt: str) -> list[str]:
     if len(txt) < TEXT_LENGTH_LIMIT:
         return [txt]
     txts = txt.split("\n")
-    ans: List[str] = []
+    ans: list[str] = []
     # search for ``` of markdown block
     dotsss_start = -1
     dotsss_end = -1
@@ -54,10 +52,10 @@ def longtext_split(txt: str) -> List[str]:
                 dotsss_end = i
                 break
     if dotsss_start != -1 and dotsss_end != -1:
-        if dotsss_start == 0 and dotsss_end == len(txts)-1:
+        if dotsss_start == 0 and dotsss_end == len(txts) - 1:
             # cannot keep markdown block!!!
             return force_longtext_split(txts)
-        parts = txts[:dotsss_start], txts[dotsss_start:dotsss_end+1], txts[dotsss_end+1:]
+        parts = txts[:dotsss_start], txts[dotsss_start:dotsss_end + 1], txts[dotsss_end + 1:]
         for i, part in enumerate(parts):
             if len(part) > 0:
                 if i == 0:
