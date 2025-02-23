@@ -1,6 +1,5 @@
 { pkgs, ... }:
-pypkgs: with pypkgs;
-[
+pypkgs: with pypkgs; [
   aio-pika
   python-telegram-bot
   typing-extensions
