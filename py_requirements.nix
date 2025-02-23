@@ -1,3 +1,4 @@
+{ pkgs, ... }:
 pypkgs: with pypkgs;
 [
   aio-pika

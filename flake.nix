@@ -27,9 +27,8 @@
           );
     in
     {
-      self = self;
       devShells = forAllSystems (pkgs: rec {
-        default = pkgs.python3.pkgs.callPackage ./shell.nix { };
+        default = pkgs.callPackage ./shell.nix { persist = true; };
       });
     };
 }
