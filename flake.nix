@@ -30,5 +30,8 @@
       devShells = forAllSystems (pkgs: rec {
         default = pkgs.callPackage ./shell.nix { persist = true; };
       });
+      packages = forAllSystems (pkgs: rec {
+        default = pkgs.callPackage ./package.nix { };
+      });
     };
 }
