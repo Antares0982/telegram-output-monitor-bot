@@ -271,47 +271,45 @@ async def scheduled_heartbeat():
         spawn(bot_send_message(MYID, text, entities=entities))
 
 
-def wait_until_network_ready():
-    print("wait until network ready...")
-    import urllib.request as rq
+NETWORK_PROBE_INTERVAL = 3.0
 
-    last = time.time()
 
+async def wait_for(
+    name: str,
+    probe: Callable[[], Awaitable[Any]],
+    interval: float = NETWORK_PROBE_INTERVAL,
+) -> None:
+    """Retry an async readiness probe until it succeeds.
+
+    Probes the real dependency rather than a generic host, so it works
+    regardless of region/proxy setup. Retries indefinitely: at boot the network
+    may take a while to come up, and giving up would just hand control to the
+    supervisor for a restart loop with no benefit.
+    """
+    attempt = 0
     while True:
+        attempt += 1
         try:
-            r = rq.urlopen("https://www.google.com")
-            r.read()
-            if 200 <= r.status < 300:
-                break
+            await probe()
         except Exception as e:
-            print(e, file=sys.stderr)
-
-        now = time.time()
-        if now - last < 3:
-            time.sleep(3)
-        last = now
-
-    loop = asyncio.new_event_loop()
-    while True:
-        try:
-            conn = loop.run_until_complete(connect_robust())
-        except:
-            time.sleep(3)
+            logger.warning("%s not ready (attempt %d): %s", name, attempt, e)
+            await asyncio.sleep(interval)
         else:
-            try:
-                loop.run_until_complete(conn.close())
-            except:
-                pass
-            break
-    try:
-        loop.close()
-    except:
-        pass
+            logger.info("%s is ready", name)
+            return
+
+
+async def _probe_rabbitmq() -> None:
+    conn = await connect_robust()
+    await conn.close()
 
 
 async def async_main():
-    # Bring up the shared Bot's HTTP client once before any send.
-    await bot.initialize()
+    # Wait for the real dependencies before doing anything else, reusing this
+    # one event loop. Telegram readiness is established by retrying the Bot's
+    # own initialize() (which performs a getMe through the configured client).
+    await wait_for("RabbitMQ", _probe_rabbitmq)
+    await wait_for("Telegram", bot.initialize)
     stop_listening = listen_to("logging", on_message)
     heartbeat = spawn(scheduled_heartbeat())
 
@@ -340,7 +338,6 @@ async def async_main():
 
 
 def main():
-    wait_until_network_ready()
     asyncio.run(async_main())
 
 
