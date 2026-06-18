@@ -25,10 +25,7 @@ try:
     MYID = int(os.environ["ANTARES_MONITOR_MYID"])
     TOKEN = os.environ["ANTARES_MONITOR_TOKEN"]
 except (KeyError, ValueError):
-    print(
-        "ANTARES_MONITOR_MYID or ANTARES_MONITOR_TOKEN not set or invalid.",
-        file=sys.stderr,
-    )
+    logger.critical("ANTARES_MONITOR_MYID or ANTARES_MONITOR_TOKEN not set or invalid.")
     sys.exit(1)
 
 
@@ -59,70 +56,83 @@ def spawn(coro: Coroutine[Any, Any, Any]) -> "asyncio.Task[Any]":
     return task
 
 
-def force_longtext_split(txt: list[str]) -> list[str]:
-    counting = 0
-    i = 0
-    ans: list[str] = []
-    sep_len = 0
-    while i < len(txt):
-        if counting + len(txt[i]) < TEXT_LENGTH_LIMIT - sep_len:
-            counting += len(txt[i])
-            sep_len = 1
-            i += 1
+def _hard_split_line(line: str, limit: int) -> list[str]:
+    """Break a single over-long line into pieces of at most `limit` chars."""
+    return [line[i : i + limit] for i in range(0, len(line), limit)]
+
+
+def _pack_lines(lines: list[str], limit: int) -> list[str]:
+    """Greedily group lines into chunks whose joined length stays below `limit`.
+
+    Lines that are too long to fit on their own are hard-split. Pure function:
+    the input list is never mutated.
+    """
+    chunks: list[str] = []
+    current: list[str] = []
+    current_len = 0  # length of "\n".join(current)
+
+    def flush() -> None:
+        nonlocal current, current_len
+        if current:
+            chunks.append("\n".join(current))
+            current = []
+            current_len = 0
+
+    for line in lines:
+        if len(line) >= limit:
+            # Can't fit even alone: emit what we have, then hard-split it.
+            flush()
+            chunks.extend(_hard_split_line(line, limit))
+            continue
+        sep = 1 if current else 0  # the "\n" that would join this line on
+        if current_len + sep + len(line) < limit:
+            current.append(line)
+            current_len += sep + len(line)
         else:
-            if i == 0:
-                # too long, must split
-                super_long_line = txt[0]
-                _end = min(1000, len(super_long_line))
-                part = super_long_line[:_end]
-                txt[0] = super_long_line[_end:]
-                ans.append(part)
-                continue
+            flush()
+            current.append(line)
+            current_len = len(line)
+    flush()
+    return chunks
+
+
+def _find_code_block(lines: list[str]) -> "tuple[int, int] | None":
+    """Return (start, end) indices of the first ```-fenced block, or None."""
+    start = -1
+    for i, line in enumerate(lines):
+        if line.startswith("```"):
+            if start == -1:
+                start = i
             else:
-                ans.append("\n".join(txt[:i]))
-                txt = txt[i:]
-                i = 0
-                sep_len = 0
-                counting = 0
-    if len(txt) > 0:
-        ans.append("\n".join(txt))
-    return ans
+                return start, i
+    return None
 
 
-def longtext_split(txt: str) -> list[str]:
-    if len(txt) < TEXT_LENGTH_LIMIT:
+def longtext_split(txt: str, limit: int = TEXT_LENGTH_LIMIT) -> list[str]:
+    """Split text into Telegram-sized chunks, keeping a fenced code block intact
+    when it doesn't span the whole message."""
+    if len(txt) < limit:
         return [txt]
-    txts = txt.split("\n")
-    ans: list[str] = []
-    # search for ``` of markdown block
-    dotsss_start = -1
-    dotsss_end = -1
-    for i in range(len(txts)):
-        if txts[i].startswith("```"):
-            if dotsss_start == -1:
-                dotsss_start = i
-            else:
-                dotsss_end = i
-                break
-    if dotsss_start != -1 and dotsss_end != -1:
-        if dotsss_start == 0 and dotsss_end == len(txts) - 1:
-            # cannot keep markdown block!!!
-            return force_longtext_split(txts)
-        parts = (
-            txts[:dotsss_start],
-            txts[dotsss_start : dotsss_end + 1],
-            txts[dotsss_end + 1 :],
-        )
-        for i, part in enumerate(parts):
-            if len(part) > 0:
-                if i == 0:
-                    ans.extend(force_longtext_split(part))
-                else:
-                    this_text = "\n".join(part)
-                    ans.extend(longtext_split(this_text))
-        return ans
-    #
-    return force_longtext_split(txts)
+
+    lines = txt.split("\n")
+    block = _find_code_block(lines)
+    if block is None:
+        return _pack_lines(lines, limit)
+
+    start, end = block
+    if start == 0 and end == len(lines) - 1:
+        # The whole text is one code block; it can't be kept intact.
+        return _pack_lines(lines, limit)
+
+    before, fenced, after = lines[:start], lines[start : end + 1], lines[end + 1 :]
+    chunks: list[str] = []
+    if before:
+        chunks.extend(_pack_lines(before, limit))
+    if fenced:
+        chunks.extend(longtext_split("\n".join(fenced), limit))
+    if after:
+        chunks.extend(longtext_split("\n".join(after), limit))
+    return chunks
 
 
 def listen_to(
@@ -169,24 +179,20 @@ def listen_to(
     return stop_handle
 
 
-def markdown_escape(text: str) -> str:
-    return (
-        text.replace("_", "\\_")
-        .replace("*", "\\*")
-        .replace("[", "\\[")
-        .replace("`", "\\`")
-    )
-
-
-def format_message(key: str, message: str):
+def format_message(key: str, message: str) -> "tuple[str, str, list[MessageEntity]]":
     cur_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
     message = message.strip()
-    prefix = f"[{NODENAME}][{cur_time}][{key}]"
-    first_entities = [
-        MessageEntity(MessageEntity.CODE, 1, len(NODENAME)),
-        MessageEntity(MessageEntity.CODE, 3 + len(NODENAME), len(cur_time)),
-        MessageEntity(MessageEntity.CODE, 5 + len(NODENAME) + len(cur_time), len(key)),
-    ]
+
+    # Build "[node][time][key]" incrementally, recording a CODE entity for each
+    # bracketed field so offsets stay correct regardless of field lengths.
+    prefix = ""
+    first_entities: list[MessageEntity] = []
+    for field in (NODENAME, cur_time, key):
+        prefix += "["
+        first_entities.append(
+            MessageEntity(MessageEntity.CODE, len(prefix), len(field))
+        )
+        prefix += field + "]"
     return prefix, message, first_entities
 
 
