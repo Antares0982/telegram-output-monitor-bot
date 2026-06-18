@@ -1,16 +1,25 @@
 #!/usr/bin/env -S python3 -O
 import asyncio
+import logging
 import os
 import signal
 import sys
 import time
-from typing import TYPE_CHECKING, Any, Awaitable, Callable
+from datetime import timedelta
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Coroutine
 
 from aio_pika import ExchangeType, connect_robust
 from telegram import Bot, MessageEntity
+from telegram.error import RetryAfter, TelegramError
 
 if TYPE_CHECKING:
     from aio_pika.abc import AbstractIncomingMessage
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+)
+logger = logging.getLogger("monitor")
 
 try:
     MYID = int(os.environ["ANTARES_MONITOR_MYID"])
@@ -25,6 +34,29 @@ except (KeyError, ValueError):
 
 NODENAME = os.uname().nodename
 TEXT_LENGTH_LIMIT = 4000
+SEND_MAX_RETRIES = 5
+SEND_BACKOFF_CAP = 30
+
+# A single, reused Bot instance. Initialized in main() once the event loop is
+# running and the network is ready; reused for every send so the underlying
+# HTTP connection pool is shared instead of rebuilt per message.
+bot = Bot(token=TOKEN)
+
+
+def _log_task_exception(task: "asyncio.Task[Any]") -> None:
+    """Done-callback so fire-and-forget tasks don't swallow their exceptions."""
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        logger.error("background task failed", exc_info=exc)
+
+
+def spawn(coro: Coroutine[Any, Any, Any]) -> "asyncio.Task[Any]":
+    """Schedule a background task and make sure its failures get logged."""
+    task = asyncio.create_task(coro)
+    task.add_done_callback(_log_task_exception)
+    return task
 
 
 def force_longtext_split(txt: list[str]) -> list[str]:
@@ -109,6 +141,10 @@ def listen_to(
         connection = await connect_robust(**connection_kwargs)
         async with connection:
             channel = await connection.channel()
+            # Process one message at a time: gives chronological delivery order
+            # and natural backpressure so a burst of logs can't pile up faster
+            # than Telegram accepts them.
+            await channel.set_qos(prefetch_count=1)
 
             exchange = await channel.declare_exchange(exchange_name, ExchangeType.TOPIC)
             queue = await channel.declare_queue(exchange_name, exclusive=True)
@@ -154,17 +190,38 @@ def format_message(key: str, message: str):
 
 
 async def bot_send_message(*args, **kwargs):
-    for i in range(5):
+    delay = 1
+    last_exc: Exception | None = None
+    for attempt in range(1, SEND_MAX_RETRIES + 1):
         try:
-            await Bot(token=TOKEN).send_message(*args, **kwargs)
-            break
-        except Exception as e:
-            if i == 4:
-                raise type(e) from e
-            print(e)
-            await asyncio.sleep(2)
-        except BaseException as e:
-            print(e)
+            await bot.send_message(*args, **kwargs)
+            return
+        except RetryAfter as e:
+            # Telegram flood control: honor the server-specified wait.
+            last_exc = e
+            retry_after = e.retry_after
+            if isinstance(retry_after, timedelta):
+                retry_after = retry_after.total_seconds()
+            wait = retry_after + 1
+            logger.warning(
+                "flood control on attempt %d/%d, waiting %ss",
+                attempt,
+                SEND_MAX_RETRIES,
+                wait,
+            )
+            await asyncio.sleep(wait)
+        except TelegramError as e:
+            last_exc = e
+            logger.warning(
+                "send_message failed on attempt %d/%d: %s",
+                attempt,
+                SEND_MAX_RETRIES,
+                e,
+            )
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, SEND_BACKOFF_CAP)
+    assert last_exc is not None
+    raise last_exc
 
 
 async def send_log(key: str, message: bytes):
@@ -196,8 +253,10 @@ async def on_message(message: "AbstractIncomingMessage"):
         if message.routing_key is not None
         else "default"
     )
-    loop = asyncio.get_event_loop()
-    loop.create_task(send_log(key, message.body))
+    # Await the send so the surrounding msg.process() only acks once the log
+    # has actually been delivered. A failure here re-raises and the message is
+    # nacked/redelivered instead of being silently lost.
+    await send_log(key, message.body)
 
 
 def _exit_func(*args):
@@ -206,7 +265,6 @@ def _exit_func(*args):
 
 
 async def scheduled_heartbeat():
-    loop = asyncio.get_event_loop()
     while True:
         await asyncio.sleep(3600)
         text = f"[{NODENAME}] monitor is alive"
@@ -214,7 +272,7 @@ async def scheduled_heartbeat():
             MessageEntity(type=MessageEntity.CODE, offset=1, length=len(NODENAME))
         ]
         entities = MessageEntity.adjust_message_entities_to_utf_16(text, entities_utf8)
-        loop.create_task(bot_send_message(MYID, text, entities=entities))
+        spawn(bot_send_message(MYID, text, entities=entities))
 
 
 def wait_until_network_ready():
@@ -260,13 +318,16 @@ def main():
     wait_until_network_ready()
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
+    # Bring up the shared Bot's HTTP client once before any send.
+    loop.run_until_complete(bot.initialize())
     canceller = listen_to(loop, "logging", on_message)
     text = f"[{NODENAME}] monitor started"
     entities_utf8 = [
         MessageEntity(type=MessageEntity.CODE, offset=1, length=len(NODENAME))
     ]
     entities = MessageEntity.adjust_message_entities_to_utf_16(text, entities_utf8)
-    loop.create_task(bot_send_message(MYID, text, entities=entities))
+    start_task = loop.create_task(bot_send_message(MYID, text, entities=entities))
+    start_task.add_done_callback(_log_task_exception)
     loop.run_until_complete(scheduled_heartbeat())
 
 
