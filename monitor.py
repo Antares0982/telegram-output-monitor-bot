@@ -126,16 +126,17 @@ def longtext_split(txt: str) -> list[str]:
 
 
 def listen_to(
-    loop: asyncio.AbstractEventLoop,
     exchange_name: str,
     handler: Callable[["AbstractIncomingMessage"], Awaitable[Any]],
     **connection_kwargs,
-):
+) -> Callable[[], Awaitable[None]]:
+    """Start consuming in the background.
+
+    Must be called from within a running event loop. Returns an async stop
+    handle; awaiting it tells the consumer to stop, waits for it to drain, and
+    closes the connection.
     """
-    Returns: a stop handle to stop listening.
-    """
-    condition = asyncio.Condition()
-    loop.run_until_complete(condition.acquire())
+    stop_event = asyncio.Event()
 
     async def listen_task():
         connection = await connect_robust(**connection_kwargs)
@@ -155,16 +156,16 @@ def listen_to(
                     await handler(msg)
 
             await queue.consume(consume)
-            print(f"Start listening: {exchange_name}.#")
-            await condition.wait()
-            print(f"Stopped listening: {exchange_name}.#")
-            await connection.close()
+            logger.info("Start listening: %s.#", exchange_name)
+            await stop_event.wait()
+            logger.info("Stopped listening: %s.#", exchange_name)
 
-    async def stop_handle():
-        async with condition:
-            condition.notify()
+    task = spawn(listen_task())
 
-    loop.create_task(listen_task())
+    async def stop_handle() -> None:
+        stop_event.set()
+        await task
+
     return stop_handle
 
 
@@ -259,11 +260,6 @@ async def on_message(message: "AbstractIncomingMessage"):
     await send_log(key, message.body)
 
 
-def _exit_func(*args):
-    print("exiting...")
-    sys.exit(0)
-
-
 async def scheduled_heartbeat():
     while True:
         await asyncio.sleep(3600)
@@ -313,22 +309,39 @@ def wait_until_network_ready():
         pass
 
 
-def main():
-    signal.signal(signal.SIGINT, _exit_func)
-    wait_until_network_ready()
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+async def async_main():
     # Bring up the shared Bot's HTTP client once before any send.
-    loop.run_until_complete(bot.initialize())
-    canceller = listen_to(loop, "logging", on_message)
+    await bot.initialize()
+    stop_listening = listen_to("logging", on_message)
+    heartbeat = spawn(scheduled_heartbeat())
+
     text = f"[{NODENAME}] monitor started"
     entities_utf8 = [
         MessageEntity(type=MessageEntity.CODE, offset=1, length=len(NODENAME))
     ]
     entities = MessageEntity.adjust_message_entities_to_utf_16(text, entities_utf8)
-    start_task = loop.create_task(bot_send_message(MYID, text, entities=entities))
-    start_task.add_done_callback(_log_task_exception)
-    loop.run_until_complete(scheduled_heartbeat())
+    spawn(bot_send_message(MYID, text, entities=entities))
+
+    # Block here until a termination signal asks us to stop.
+    shutdown = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, shutdown.set)
+    await shutdown.wait()
+
+    logger.info("shutting down...")
+    heartbeat.cancel()
+    try:
+        await heartbeat
+    except asyncio.CancelledError:
+        pass
+    await stop_listening()
+    await bot.shutdown()
+
+
+def main():
+    wait_until_network_ready()
+    asyncio.run(async_main())
 
 
 if __name__ == "__main__":
