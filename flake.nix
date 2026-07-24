@@ -73,7 +73,9 @@
     in
     {
       packages = forAllSystems (system: {
-        default = pythonSets.${system}.mkVirtualEnv "telegram-output-monitor-bot-env" workspace.deps.default;
+        default =
+          pythonSets.${system}.mkVirtualEnv "telegram-output-monitor-bot-env"
+            workspace.deps.default;
       });
 
       # `nix run` -> runs the `monitor` console script from the built venv.
@@ -83,6 +85,11 @@
           program = "${self.packages.${system}.default}/bin/monitor";
         };
       });
+
+      # NixOS module: runs the bot as a systemd service. The user points
+      # `services.telegram-output-monitor-bot.environmentFile` at a file that
+      # defines ANTARES_MONITOR_MYID and ANTARES_MONITOR_TOKEN.
+      nixosModules.default = import ./nix/module.nix self;
 
       devShells = forAllSystems (
         system:
@@ -100,9 +107,7 @@
               editableOverlay
               (final: prev: {
                 telegram-output-monitor-bot = prev.telegram-output-monitor-bot.overrideAttrs (old: {
-                  nativeBuildInputs =
-                    old.nativeBuildInputs
-                    ++ final.resolveBuildSystem { editables = [ ]; };
+                  nativeBuildInputs = old.nativeBuildInputs ++ final.resolveBuildSystem { editables = [ ]; };
                 });
               })
             ]
