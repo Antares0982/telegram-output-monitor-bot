@@ -2,7 +2,6 @@ result
 cfg.py
 pika_interface.py
 .vscode/
-/.nix-pyenv
 /.direnv
 
 # Byte-compiled / optimized / DLL files

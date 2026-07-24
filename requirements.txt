@@ -1,2 +1,0 @@
-aio-pika
-python-telegram-bot
