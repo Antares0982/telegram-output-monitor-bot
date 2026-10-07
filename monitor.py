@@ -28,6 +28,7 @@ except (KeyError, ValueError):
     logger.critical("ANTARES_MONITOR_MYID or ANTARES_MONITOR_TOKEN not set or invalid.")
     sys.exit(1)
 
+NEED_HEARTBEAT = int(os.environ.get("ANTARES_MONITOR_HEARTBEAT", "0"))
 
 NODENAME = os.uname().nodename
 TEXT_LENGTH_LIMIT = 4000
@@ -317,7 +318,8 @@ async def async_main():
     await wait_for("RabbitMQ", _probe_rabbitmq)
     await wait_for("Telegram", bot.initialize)
     stop_listening = listen_to("logging", on_message)
-    heartbeat = spawn(scheduled_heartbeat())
+
+    heartbeat = spawn(scheduled_heartbeat()) if NEED_HEARTBEAT else None
 
     text = f"[{NODENAME}] monitor started"
     entities_utf8 = [
@@ -334,11 +336,12 @@ async def async_main():
     await shutdown.wait()
 
     logger.info("shutting down...")
-    heartbeat.cancel()
-    try:
-        await heartbeat
-    except asyncio.CancelledError:
-        pass
+    if heartbeat is not None:
+        heartbeat.cancel()
+        try:
+            await heartbeat
+        except asyncio.CancelledError:
+            pass
     await stop_listening()
     await bot.shutdown()
 
